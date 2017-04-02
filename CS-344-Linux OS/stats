@@ -1,0 +1,176 @@
+#!/bin/bash
+# This solution to project 1 created by Spencer Moran
+# Class: CS344 - 400
+# Author: Spencer Moran
+# Date: 1/29/2017
+# Filename: stats
+# Description: This shell script takes in an input file, plus one parameter and returns either
+#    the average and median values of either the columns or rows.
+# Future Improvements: consolidate code and file handling. Substitute tmp files for array structures
+# Note: Files must be readable in order for the script to work. Using files without read permission
+#    will result in an error message and an exit status of 1.
+
+datafilepath="datafile$$"
+
+killfile=0			#Flag for cleanup script. Triggers if a file is created for the input.
+
+trap "rm -f $datafilepath; exit 1" INT HUP TERM SIGINT
+if [ "$#" = "1" ]		#number of arguments == 1?
+then
+#	echo 'stats {-rows|-cols} [input_file]'
+#	exit 1
+	cat > "$datafilepath"	#creates a file called datafile{PID}!!!
+	killfile=1		#deletion flag
+elif [ "$#" = "2" ]		#number of arguments == 2?
+then
+	if [[ $2 == -r* || $2 == -c* ]]			#Pick one, not two.
+	then
+		>&2 echo 'stats {-rows|-cols} [input_file]'
+		exit 1
+	fi
+	datafilepath=$2		#variable datafilepath receives param 2 as filepath
+else
+	>&2 echo 'stats {-rows|-cols} [input_file]' 	#echo out to stderr
+	exit 1						#set exit status to 1
+fi
+
+if [ ! -r "$datafilepath" ]	#Check if the file can be read LOGIC [if not readable, then...]
+then
+	>&2 echo "ERROR: File not readable"
+	exit 1
+fi
+
+if [[ $1 == -r* ]];		#user asks for rows
+
+then
+	numCols=`cat $datafilepath | head -n 1 | wc -w`; 	#finds number of columns
+	numRows=`cat $datafilepath | wc -l`			#finds number of rows
+	tmpfile="tmp$$"				#temp files for calculations
+	srtfile="srt$$"				#
+	medians="med$$"				#
+	averages="avgs$$"			#
+
+	trap "rm -f $datafilepath $tmpfile $srtfile $medians $averages; exit 1" INT HUP TERM SIGINT
+
+if (( "$numRows" == 0 ))			#generally speaking, if there are no rows, then the file is empty
+then
+	>&2 echo "ERROR: empty file"
+	exit 1
+fi
+if (( "$numCols" % 2 == 0 ))				#finds location of median value
+	then
+		midloc=`expr $numCols / 2 + 1`;		#These are the same because I wanted to futureproof
+	else						#   the median values, in case I needed to make them
+		midloc=`expr $numCols / 2 + 1`;		#   more accurate later.
+	fi
+	
+
+	# I realize this script is not the most efficient way to do this, but it works.
+	j=1
+	while (( "$j" <= "$numRows" ))			#loop over rows and columns.
+	do
+		sum=0
+		avg=0
+		i=1
+		while (( "$i" <= "$numCols" ))	
+			do	#cat individual values and append to tmp file. Add the current value to sum.
+				cat $datafilepath | head -n "$j" | tail -n 1 | cut -f "$i" >> $tmpfile
+				curval=`cat $datafilepath | head -n "$j" | tail -n 1 | cut -f "$i"`
+				sum=`expr $sum + $curval`
+				(( i++ ))			# THANK YOU SHELL ARITHMETIC!!!
+			done
+		sort -n < $tmpfile > $srtfile 		#Sort tmpfile and cat the results into srtfile
+		rm -f $tmpfile;				#remove tmpfile, then add the median to the medfile
+		cat $srtfile | head -n "$midloc" | tail -n 1 | cut -f 1 >> $medians	
+		rm -f $srtfile				#remove srtfile
+		avg=$(( ( $sum +  ( $numCols / 2 ) ) / $numCols )) #Arithmetic Expansion, calcs avg
+		echo $avg >> $averages			#add the average to the average file.
+		(( j++ ))
+	done
+	
+	echo "Medians:"				#Display data, and clean up remaining files
+	cat $medians 
+	echo "Averages:"
+	cat $averages
+	rm -f $medians
+	rm -f $averages
+elif [[ $1 == -c* ]];				#Same as above ^^^^^^ but with columns
+then
+	numCols=`cat $datafilepath | head -n 1 | wc -w`; 	#finds number of columns
+	numRows=`cat $datafilepath | wc -l`			#finds number of rows
+	tmpfile="tmp$$"
+	srtfile="srt$$"
+	medians="med$$"
+	averages="avgs$$"
+	
+	trap "rm -f $datafilepath $tmpfile $srtfile $medians $averages; exit 1" INT HUP TERM SIGINT
+
+	if (( "$numRows" == 0 ))
+	then
+		>&2 echo "ERR: empty file"
+		exit 1
+	fi
+
+	if (( "$numRows" / 2 == 0 ))				#finds location of median value
+	then
+		midloc=`expr $numRows / 2 + 1`;			#if we were using real medians these two
+	else							#formulas would be different.
+		midloc=`expr $numRows / 2 + 1`;
+	fi
+
+
+	j=1
+	while (( "$j" <= "$numCols" ))
+	do
+		sum=0
+		avg=0
+		i=1
+		
+		while (( "$i" <= "$numRows" ))	
+			do
+				cat $datafilepath | head -n "$i" | tail -n 1 | cut -f "$j" >> $tmpfile
+				curval=`cat $datafilepath | head -n "$i" | tail -n 1 | cut -f "$j"`
+				sum=`expr $sum + $curval`
+				(( i++ ))		
+			done
+
+#		To find the median. Sort the numbers in the column. and get the position of rows/2 + 1,
+#			 since the +1 position will always be greater in this case. Store the medians in a tmpfile
+		sort -n < $tmpfile > $srtfile
+		rm -f $tmpfile
+		cat $srtfile | head -n "$midloc" | tail -n 1 | cut -f 1 >> $medians	
+		rm -f $srtfile
+		if (( $numRows != 0 ))
+		then
+		avg=$(( ( $sum +  ( $numRows / 2 ) ) / $numRows )) #arithmetic Expansion
+		echo $avg >> $averages
+		fi
+		(( j++ ))
+	done
+
+	echo "medians"
+	cat $medians 
+	echo "averages"
+	cat $averages
+	rm -f $medians
+	rm -f $averages
+	
+elif [[ $1 == -R* ]]; 			# JIC statement. No capitalized letters!
+then
+	>&2 echo 'stats {-rows|-cols} [input_file]'
+	exit 1
+elif [[ $1 == -C* ]]
+then
+	>&2 echo 'stats {-rows|-cols} [input_file]'
+	exit 1
+
+else					# This statement rejects any parameters that are not -r* or -c*
+	>&2 echo 'stats {-rows|-cols} [input_file]'
+	exit 1
+fi
+
+if [[ $killfile == 1 ]]			#if a tempfile was created, destroy it.
+then
+	rm -f $datafilepath
+fi
+exit 0
